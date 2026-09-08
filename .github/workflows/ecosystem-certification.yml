@@ -1,0 +1,21 @@
+name: Ecosystem Main Certification
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run certify:ecosystem
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
