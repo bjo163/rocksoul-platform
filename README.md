@@ -75,6 +75,45 @@ Repository names and semantic domain names are deliberately distinct. In particu
 | Research domains | references only | operates across all six research domains + relationships |
 | Canonical research | never owns | never silently owns |
 
+## Application implementation
+
+The administration surface is a React 19 + Vite consumer of a pinned commit of `@rocksoul/ui`. Platform navigation is intentionally narrower than the shared Crayon/workspace shell:
+
+| Route | Platform responsibility |
+|---|---|
+| `/` | administration dashboard |
+| `/users` | users, invitations, and role posture |
+| `/authorization` | capability and permission boundaries |
+| `/moderation` | moderation authority and queue actions |
+| `/service-status` | delivery dependency and backend integration status |
+| `/audit` | operational audit trail |
+| `/settings` | product/system configuration |
+| `/system-states` | shared recovery-state reference |
+
+`/cases` remains a compatibility entry to Platform moderation review. Research workspace routes such as `/work/kanban`, `/work/calendar`, `/chat`, and `/ai` intentionally resolve to the Platform boundary/404 view because those workflows belong to `rocksoul-crayon`.
+
+### Runtime data boundary
+
+The UI currently ships with explicit browser-persisted fixture state for admin interactions. This is deliberate: there is no live, Platform-owned IAM data service connected to this Vercel application yet. The frontend does not pretend that Crayon or Community authentication is the canonical Platform backend.
+
+A production IAM backend must preserve the same authority model and persist:
+
+- ACCOUNT / USER / ORGANIZATION;
+- ROLE / PERMISSION / authorization decisions;
+- moderation authority;
+- system configuration;
+- privileged audit events.
+
+### Development
+
+```bash
+npm install
+npm run dev
+npm run ci
+```
+
+Normal CI installs the pinned UI Git dependency, runs the ecosystem contract guard, the Platform UI boundary audit, TypeScript strict checking, and the Vite production build.
+
 ## Guardrails
 
 - product administration ≠ research adjudication;

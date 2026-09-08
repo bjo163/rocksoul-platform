@@ -8,12 +8,12 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "test": "node scripts/validate-contract.mjs",
+    "test": "node scripts/validate-contract.mjs && node scripts/validate-platform-ui.mjs",
     "certify:ecosystem": "node scripts/certify-ecosystem.mjs",
     "ci": "npm test && npm run typecheck && npm run build"
   },
   "dependencies": {
-    "@rocksoul/ui": "github:bjo163/rocksoul-ui#f0c9d6c0012e0426404fb5268ab1427089ede76b",
+    "@rocksoul/ui": "github:bjo163/rocksoul-ui#e25978b8745046510fc071e9cc05a5d74a1ff650",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
