@@ -872,6 +872,21 @@ function AuthenticatedPlatform({
 
   useEffect(() => {
     void refreshSession()
+
+    const refreshAfterNavigation = () => void refreshSession()
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshSession()
+    }
+
+    window.addEventListener("popstate", refreshAfterNavigation)
+    window.addEventListener("focus", refreshAfterNavigation)
+    document.addEventListener("visibilitychange", refreshWhenVisible)
+
+    return () => {
+      window.removeEventListener("popstate", refreshAfterNavigation)
+      window.removeEventListener("focus", refreshAfterNavigation)
+      document.removeEventListener("visibilitychange", refreshWhenVisible)
+    }
   }, [refreshSession])
 
   const refresh = useCallback(async () => {
