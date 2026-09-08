@@ -1,0 +1,42 @@
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+.platform-feedback {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 80;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: min(520px, calc(100vw - 40px));
+  border: 1px solid var(--mw-border-strong);
+  background: var(--mw-surface-overlay);
+  color: var(--mw-text-primary);
+  padding: 12px;
+  box-shadow: 0 18px 48px rgb(0 0 0 / 0.18);
+}
+
+.platform-feedback p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .platform-feedback {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+    grid-template-columns: 1fr auto;
+  }
+
+  .platform-feedback p {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
