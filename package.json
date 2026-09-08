@@ -1,0 +1,10 @@
+{
+  "name": "rocksoul-platform-contracts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/validate-contract.mjs",
+    "certify:ecosystem": "node scripts/certify-ecosystem.mjs"
+  },
+  "engines": { "node": ">=22" }
+}
