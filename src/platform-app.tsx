@@ -1116,6 +1116,7 @@ export function PlatformApp() {
       emailOTP
       navigate={navigate}
       replace={replace}
+      onSessionChange={() => window.dispatchEvent(new PopStateEvent("popstate"))}
     >
       <AuthenticatedPlatform config={config} authClient={authClient} />
     </NeonAuthUIProvider>
