@@ -8,16 +8,17 @@ import {
   Input,
   MetricTile,
   ModerationQueue,
+  MoonWitnessCommunityParticipationAsset,
   MoonWitnessPersonaAvatar,
+  MoonWitnessRegistryAssetImage,
   RepositoryMonitor,
   StatePanel,
   type AppCommandAction,
   type AppNotification,
   type AppResource,
+  rocksoulEcosystemRepositories,
   type ApplicationActions,
 } from "@rocksoul/ui"
-
-export const ROCKSOUL_UI_PIN = "e25978b8745046510fc071e9cc05a5d74a1ff650"
 
 const platformPermissions = [
   "authenticated",
@@ -222,11 +223,13 @@ function PageHeading({
   title,
   copy,
   action,
+  visual,
 }: {
   eyebrow: string
   title: string
   copy: string
   action?: ReactNode
+  visual?: ReactNode
 }) {
   return (
     <header className="platform-heading">
@@ -235,7 +238,12 @@ function PageHeading({
         <h1>{title}</h1>
         <p className="platform-subtitle">{copy}</p>
       </div>
-      {action ? <div className="platform-heading-action">{action}</div> : null}
+      {visual || action ? (
+        <div className="platform-heading-side">
+          {visual ? <div className="platform-heading-visual">{visual}</div> : null}
+          {action ? <div className="platform-heading-action">{action}</div> : null}
+        </div>
+      ) : null}
     </header>
   )
 }
@@ -260,6 +268,7 @@ function DashboardScreen({
         eyebrow="ADMIN / IAM / OPERATIONS"
         title="Govern the product."
         copy="Identity authority, moderation, configuration, and operational health stay separate from research adjudication."
+        visual={<MoonWitnessRegistryAssetImage pack="authorization-security" assetId="audit-lock" alt="Platform authority lock" />}
       />
       <div className="platform-metrics">
         <MetricTile label="Platform users" value={String(users.length).padStart(2, "0")} context={String(active) + " active"} />
@@ -276,6 +285,10 @@ function DashboardScreen({
               <h2>Platform owns admin/IAM.</h2>
             </div>
             <Badge variant="verified">ENFORCED IN NAV</Badge>
+          </div>
+          <div className="platform-boundary-visual">
+            <MoonWitnessCommunityParticipationAsset asset="identity-bridge" alt="Community identity bridge to Platform" />
+            <p>Community presents public identity; Platform owns account, role, permission, and session authority.</p>
           </div>
           <div className="platform-list">
             <div className="platform-row"><span>ACCOUNT / USER / ROLE</span><strong>PLATFORM</strong></div>
@@ -348,6 +361,7 @@ function UsersScreen({
         eyebrow="ACCOUNT / USER / ROLE"
         title="Users & roles."
         copy="Platform is the authority surface for identity operations. Public profile data remains Community-owned."
+        visual={<MoonWitnessRegistryAssetImage pack="authorization-security" assetId="access-request" alt="Identity access request" />}
       />
 
       <div className="platform-grid platform-grid-two">
@@ -426,6 +440,7 @@ function AuthorizationScreen({
         title="Authorization."
         copy="Permissions are visible before privileged operations. Platform authority never turns into research adjudication."
         action={<Button variant="secondary" onClick={() => record("authorization.review.requested", "role-matrix", "queued")}>Review matrix</Button>}
+        visual={<MoonWitnessRegistryAssetImage pack="authorization-security" assetId="permission-granted" alt="Authorization permission boundary" />}
       />
       <section className="platform-card platform-card-spaced">
         <div className="platform-table-wrap">
@@ -471,6 +486,7 @@ function ModerationScreen({
         eyebrow="MODERATION AUTHORITY"
         title="Moderation operations."
         copy="Community participation remains non-canonical until review. Platform governs moderation actions, not research truth."
+        visual={<MoonWitnessCommunityParticipationAsset asset="moderation-history" alt="Moderation history" />}
       />
       <div className="platform-card platform-card-spaced">
         <ModerationQueue
@@ -510,9 +526,9 @@ function ServiceStatusScreen({
   uiCommit: string
 }) {
   const dependencies = [
-    { repo: "rocksoul-assets", status: "online" as const, queue: 0, errors: 0 },
-    { repo: "rocksoul-ui", status: "online" as const, queue: 0, errors: 0 },
-    { repo: "rocksoul-platform", status: "online" as const, queue: 0, errors: 0 },
+    { repo: rocksoulEcosystemRepositories.assets, status: "online" as const, queue: 0, errors: 0 },
+    { repo: rocksoulEcosystemRepositories.ui, status: "online" as const, queue: 0, errors: 0 },
+    { repo: rocksoulEcosystemRepositories.platform, status: "online" as const, queue: 0, errors: 0 },
   ]
 
   return (
@@ -521,6 +537,7 @@ function ServiceStatusScreen({
         eyebrow="PRODUCT / SERVICE HEALTH"
         title="Service status."
         copy="Build dependencies are pinned and inspectable. Central IAM persistence and telemetry still require a dedicated Platform backend."
+        visual={<MoonWitnessRegistryAssetImage pack="authorization-security" assetId="security-alert" alt="Service security status" />}
       />
       <div className="platform-banner platform-banner-warning">
         <div><p className="platform-kicker">Backend integration</p><strong>NOT CONNECTED</strong></div>
@@ -560,6 +577,7 @@ function AuditScreen({
         eyebrow="ADMIN AUDIT"
         title="Operational log."
         copy="Every local fixture mutation is inspectable here. A production backend must persist the same semantics server-side."
+        visual={<MoonWitnessRegistryAssetImage pack="authorization-security" assetId="audit-lock" alt="Audit lock" />}
       />
       <section className="platform-card platform-audit">
         {audit.length ? audit.map((event) => (
@@ -602,6 +620,7 @@ function SettingsScreen({
         eyebrow="SYSTEM CONFIG"
         title="Platform settings."
         copy="Configuration controls product operations. It does not copy or mutate canonical research records."
+        visual={<MoonWitnessRegistryAssetImage pack="authorization-security" assetId="device-trusted" alt="Trusted platform configuration" />}
       />
       <div className="platform-grid platform-grid-two">
         <section className="platform-card">
@@ -652,6 +671,7 @@ function SystemStatesScreen({ notifications }: { notifications: AppNotification[
         eyebrow="RECOVERY LANGUAGE"
         title="System states."
         copy="Error, empty, loading, offline, and forbidden states use the shared Rocksoul UI recovery grammar."
+        visual={<MoonWitnessRegistryAssetImage pack="authorization-security" assetId="session-expired" alt="System recovery state" />}
       />
       <div className="platform-state-grid">
         <StatePanel state="error" traceId="PLATFORM-QUERY-001" />
@@ -681,6 +701,7 @@ function NotFoundScreen({
           ? "Research workspaces are intentionally not duplicated inside the administration layer."
           : "The requested route is not registered in the Platform administration contract."}
         action={<a className="platform-link-button" href="/">Return to dashboard</a>}
+        visual={<MoonWitnessRegistryAssetImage pack="authorization-security" assetId="access-rejected" alt="Platform route boundary" />}
       />
       <section className="platform-card platform-card-spaced">
         <p className="platform-kicker">Requested path</p>
