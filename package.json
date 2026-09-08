@@ -13,7 +13,7 @@
     "ci": "npm test && npm run typecheck && npm run build"
   },
   "dependencies": {
-    "@rocksoul/ui": "github:bjo163/rocksoul-ui#main",
+    "@rocksoul/ui": "github:bjo163/rocksoul-ui#2afe19bb59464eb2980e02e64a3511967c4c61fb",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -25,7 +25,7 @@
     "vite": "8.2.2"
   },
   "engines": {
-    "node": ">=22",
+    "node": "22.x",
     "npm": ">=11.6.0"
   },
   "packageManager": "npm@11.6.0"
