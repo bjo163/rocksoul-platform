@@ -379,3 +379,74 @@ body,
     justify-self: start;
   }
 }
+
+
+/* Shared asset-backed authority visuals. */
+.platform-heading-side {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.platform-heading-visual {
+  width: 104px;
+  height: 104px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--mw-border-default);
+  background: var(--mw-surface-panel);
+  padding: 8px;
+}
+
+.platform-heading-visual img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.platform-boundary-visual {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--mw-border-default);
+  background: var(--mw-surface-panel);
+}
+
+.platform-boundary-visual img {
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
+}
+
+.platform-boundary-visual p {
+  margin: 0;
+  color: var(--mw-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .platform-heading-side {
+    width: 100%;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .platform-heading-visual {
+    width: 84px;
+    height: 84px;
+  }
+
+  .platform-boundary-visual {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .platform-boundary-visual img {
+    width: 64px;
+    height: 64px;
+  }
+}

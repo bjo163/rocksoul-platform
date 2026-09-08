@@ -13,7 +13,7 @@
     "ci": "npm test && npm run typecheck && npm run build"
   },
   "dependencies": {
-    "@rocksoul/ui": "github:bjo163/rocksoul-ui#e25978b8745046510fc071e9cc05a5d74a1ff650",
+    "@rocksoul/ui": "github:bjo163/rocksoul-ui#6a98ce0d5f5be60d4744f073837cd754639ea044",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -22,7 +22,8 @@
     "@types/react-dom": "19.2.7",
     "@vitejs/plugin-react": "6.1.1",
     "typescript": "7.0.2",
-    "vite": "8.2.2"
+    "vite": "8.2.2",
+    "@types/node": "^24.0.0"
   },
   "engines": {
     "node": "24.x",

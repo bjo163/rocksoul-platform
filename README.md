@@ -1,6 +1,5 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/bjo163/rocksoul-assets/main/moonwitness/brand/logo-horizontal.svg" alt="MoonWitness" width="420" />
 
 # ROCKSOUL PLATFORM
 
@@ -129,3 +128,8 @@ Normal CI installs the pinned UI Git dependency, runs the ecosystem contract gua
 `PLATFORM / MoonWitness × Rocksoul`
 
 </div>
+
+
+### Visual authority contract
+
+Platform authority visuals are consumed from `@rocksoul/ui`, which resolves the canonical `rocksoul-assets` release. IAM/security surfaces use the shared authorization-security pack, while moderation and Community↔Platform identity boundaries reuse the dedicated participation pack. Runtime asset URLs, HTML brand metadata, and the displayed UI commit are derived from shared/build contracts rather than duplicated repository URLs or SHA literals.
