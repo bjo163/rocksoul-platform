@@ -4,52 +4,101 @@
 
 # ROCKSOUL PLATFORM
 
-## **THE ADMINISTRATION / IAM LAYER**
+## **THE ADMINISTRATION / IAM AUTHORITY**
 
-### **OPERATE THE PRODUCT. GOVERN ACCESS. KEEP THE SYSTEM HEALTHY.**
+### **AUTHENTICATE. AUTHORIZE. OPERATE. AUDIT.**
 
-Internal administration and identity/authorization authority for the **MoonWitness × Rocksoul** ecosystem: accounts, users, organizations, roles, permissions, authorization, moderation authority, settings, service health, system configuration, and admin audit.
+Production administration surface for the **MoonWitness × Rocksoul** ecosystem. Platform owns product identity/authorization posture, moderation authority, configuration, service health, and privileged operational audit. Research truth remains with the owning domain repositories.
 
 </div>
 
 ---
 
-> **PLATFORM governs identity, access, and product operations. CRAYON consumes identity while operating research workflows. COMMUNITY owns participation and public profiles. The intelligence repositories own research truth.**
+> **PLATFORM governs identity and product operations. COMMUNITY owns participation. CRAYON consumes authorization while operating research workflows. Research repositories own canonical research truth.**
 
-## Authority boundary
+## Runtime architecture
 
-```text
-PLATFORM
-= ACCOUNT · USER · ORGANIZATION · ROLE · PERMISSION
-  AUTHORIZATION · MODERATION AUTHORITY · SYSTEM CONFIG · ADMIN AUDIT
+\`\`\`text
+rocksoul-assets / main
+        ↓ canonical V2 visual contracts 28–35
+rocksoul-ui / exact commit
+        ↓ typed Platform Admin components + contract
+rocksoul-platform / React + Vite
+        ↓
+Managed Better Auth ── JWT ── Neon Data API
+                              ↓
+                       platform schema
+                       RPC-only access
+                       role checks
+                       audit traces
+\`\`\`
 
-COMMUNITY
-= PUBLIC PROFILE · THREAD · COMMENT · DISCUSSION · PROPOSAL · PARTICIPATION
+The browser never receives a PostgreSQL connection string. The committed runtime configuration contains only public Auth/Data API endpoints and deployment metadata. Authenticated requests carry short-lived JWTs; Postgres access is restricted to explicit \`platform.*\` RPC functions.
 
-CRAYON
-= authenticated operator consumer
-```
+## Platform surfaces
 
-Existing Community or Crayon sign-in/session implementations are compatibility surfaces; they do not redefine IAM authority. A local identity provider may remain available while consumers integrate Platform-owned identity contracts.
+Navigation is consumed from \`@rocksoul/ui\`'s \`platformAdminContract\`, not recreated here.
 
-## Machine-readable ecosystem contract
+| Surface | Responsibility |
+|---|---|
+| Dashboard | live IAM / moderation / audit posture |
+| Users & Roles | authenticated directory, Platform role and state management |
+| Authorization | canonical role-capability matrix |
+| Moderation | authoritative moderation queue decisions |
+| Service Status | live Assets / UI / Platform / IAM health |
+| Audit Log | privileged mutation traceability |
+| Settings | product-level operational configuration |
+| System States | loading, empty, error, offline, forbidden, unconfigured recovery language |
 
-The canonical repository/domain/product binding is versioned at:
+Each surface can display its matching canonical V2 visual reference from \`rocksoul-assets\` screen 28–35.
 
-```text
-contracts/rocksoul.ecosystem.v1.json
-```
+## Authentication and bootstrap
 
-Normal Platform CI validates that file locally and does **not** require other repositories. A separate scheduled/manual integration workflow, `.github/workflows/ecosystem-certification.yml`, reads current `main` branches and checks cross-repository compatibility.
+Managed Better Auth is enabled on the dedicated Neon project \`rocksoul-platform\`. Production origin \`https://rocksoul-platform.vercel.app\` is trusted. Email/password accounts use email verification; OAuth development providers are not exposed.
 
-```text
-STORY        → rocksoul-mftl        → mftl:
-EVENT        → rocksoul-legend      → legend:
-PERSON       → rocksoul-superhero   → superhero:
-TEXT         → rocksoul-rgbl        → rgbl:
-LAW          → rocksoul-aws         → aws:
-PERSPECTIVE  → rocksoul-jizz        → jizz:
-RELATIONSHIP → rocksoul-correlation → correlation:
+A newly authenticated account is synchronized to the operational directory by \`platform.ensure_profile()\`, but receives **no Platform role automatically**. This intentionally prevents "first user wins" privilege escalation.
+
+The first administrator must be promoted deliberately from the Neon control plane/database. After an admin exists, role and state changes happen through Platform and are audited.
+
+## Data authority
+
+The Data API exposes only the \`platform\` schema. Roles \`anonymous\` and \`authenticated\` have no direct table access. The application calls security-definer RPCs that evaluate \`auth.user_id()\`:
+
+- \`platform.ensure_profile()\`
+- \`platform.bootstrap()\`
+- \`platform.set_user_state(...)\`
+- \`platform.set_user_role(...)\`
+- \`platform.update_setting(...)\`
+- \`platform.moderate(...)\`
+
+Every privileged mutation writes a trace to \`platform.audit\`.
+
+## No fixture authority
+
+There is no browser-persisted user directory, local audit trail, fake repository status, fake admin identity, or fallback mutation store. When Auth/Data API is unavailable, the UI is explicitly degraded/offline and mutations fail closed.
+
+Empty moderation or audit tables render as real empty states. A user without a Platform role sees an access-pending/forbidden state rather than synthetic records.
+
+## Development
+
+\`\`\`bash
+npm install
+npm run dev
+npm run ci
+\`\`\`
+
+Local Auth access is disabled on the production Neon branch. Use a dedicated Neon development branch and a development \`runtime-config.json\` for local authentication work rather than weakening production trusted-origin policy.
+
+## Ecosystem authority
+
+\`\`\`text
+STORY        → rocksoul-mftl
+EVENT        → rocksoul-legend
+PERSON       → rocksoul-superhero
+TEXT         → rocksoul-rgbl
+LAW          → rocksoul-aws
+PERSPECTIVE  → rocksoul-jizz
+RELATIONSHIP → rocksoul-correlation
 
 DESIGN       → rocksoul-assets
 UI           → rocksoul-ui
@@ -57,75 +106,12 @@ PUBLIC       → rocksoul-web
 COMMUNITY    → rocksoul-community
 ADMIN / IAM  → rocksoul-platform
 OPERATIONS   → rocksoul-crayon
-```
-
-Repository names and semantic domain names are deliberately distinct. In particular `RGBL` is the repository/product identity while `TEXT` is its semantic domain, and `AWS` is the repository/product identity while `LAW` is its semantic domain.
-
-## Canonical branch rule
-
-`main` is the ecosystem source of truth. Canonical foreign references resolve against the owning repository's `main`; a `dev`-only target is development/pending promotion, not canonical.
-
-## Platform vs Console
-
-| | `rocksoul-platform` | `rocksoul-crayon` |
-|---|---|---|
-| Primary role | administration / IAM authority | research/operator console |
-| Users / roles | canonical authority | consumes authorization context |
-| Moderation | authority and admin operations | research review workflow |
-| Research domains | references only | operates across all six research domains + relationships |
-| Canonical research | never owns | never silently owns |
-
-## Application implementation
-
-The administration surface is a React 19 + Vite consumer of a pinned commit of `@rocksoul/ui`. Platform navigation is intentionally narrower than the shared Crayon/workspace shell:
-
-| Route | Platform responsibility |
-|---|---|
-| `/` | administration dashboard |
-| `/users` | users, invitations, and role posture |
-| `/authorization` | capability and permission boundaries |
-| `/moderation` | moderation authority and queue actions |
-| `/service-status` | delivery dependency and backend integration status |
-| `/audit` | operational audit trail |
-| `/settings` | product/system configuration |
-| `/system-states` | shared recovery-state reference |
-
-`/cases` remains a compatibility entry to Platform moderation review. Research workspace routes such as `/work/kanban`, `/work/calendar`, `/chat`, and `/ai` intentionally resolve to the Platform boundary/404 view because those workflows belong to `rocksoul-crayon`.
-
-### Runtime data boundary
-
-The UI currently ships with explicit browser-persisted fixture state for admin interactions. This is deliberate: there is no live, Platform-owned IAM data service connected to this Vercel application yet. The frontend does not pretend that Crayon or Community authentication is the canonical Platform backend.
-
-A production IAM backend must preserve the same authority model and persist:
-
-- ACCOUNT / USER / ORGANIZATION;
-- ROLE / PERMISSION / authorization decisions;
-- moderation authority;
-- system configuration;
-- privileged audit events.
-
-### Development
-
-```bash
-npm install
-npm run dev
-npm run ci
-```
-
-Normal CI installs the pinned UI Git dependency, runs the ecosystem contract guard, the Platform UI boundary audit, TypeScript strict checking, and the Vite production build.
-
-## Guardrails
-
-- product administration ≠ research adjudication;
-- community popularity ≠ research validity;
-- authentication compatibility ≠ duplicate IAM authority;
-- system configuration may bind repositories, but it does not copy their canonical records;
-- cross-repository certification is separate from normal local CI.
+\`\`\`
 
 <div align="center">
 
 ## **GOVERN THE PRODUCT. PRESERVE THE BOUNDARIES.**
 
-`PLATFORM / MoonWitness × Rocksoul`
+\`PLATFORM / MoonWitness × Rocksoul\`
 
 </div>

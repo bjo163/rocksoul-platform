@@ -2,43 +2,61 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 
 const root = process.cwd()
-const [pkgRaw, main, app, workflow, vercel] = await Promise.all([
+const [pkgRaw, main, app, runtime, runtimeConfigRaw, workflow, vercel, readme] = await Promise.all([
   readFile(path.join(root, "package.json"), "utf8"),
   readFile(path.join(root, "src", "main.tsx"), "utf8"),
   readFile(path.join(root, "src", "platform-app.tsx"), "utf8"),
+  readFile(path.join(root, "src", "runtime.ts"), "utf8"),
+  readFile(path.join(root, "public", "runtime-config.json"), "utf8"),
   readFile(path.join(root, ".github", "workflows", "validate.yml"), "utf8"),
   readFile(path.join(root, "vercel.json"), "utf8"),
+  readFile(path.join(root, "README.md"), "utf8"),
 ])
 
 const pkg = JSON.parse(pkgRaw)
+const runtimeConfig = JSON.parse(runtimeConfigRaw)
 const failures = []
 const uiDependency = pkg.dependencies?.["@rocksoul/ui"] ?? ""
 
-if (!/^github:bjo163\/rocksoul-ui#[0-9a-f]{40}$/.test(uiDependency)) failures.push("@rocksoul/ui must be pinned to an exact commit")
-if (pkg.engines?.node !== "24.x") failures.push("Node runtime must stay pinned to 24.x")
-if (!main.includes("ROCKSOUL_ASSETS_SYNC.acceptedMainCommit")) failures.push("accepted canonical asset commit")
-if (!main.includes("MoonWitnessAssetProvider")) failures.push("Rocksoul asset provider")
+if (!/^github:bjo163\/rocksoul-ui#[0-9a-f]{40}$/.test(uiDependency)) failures.push("@rocksoul/ui exact commit pin")
+if (pkg.engines?.node !== "24.x") failures.push("Node 24 pin")
+if (!pkg.dependencies?.["@neondatabase/auth"] || !pkg.dependencies?.["@neondatabase/auth-ui"]) failures.push("Managed Better Auth dependencies")
 
-for (const id of ["users", "authorization", "moderation", "service-status", "audit", "settings", "system-states"]) {
-  if (!app.includes('id: "' + id + '"')) failures.push("platform navigation " + id)
+if (!main.includes("ROCKSOUL_ASSETS_SYNC.acceptedMainCommit")) failures.push("accepted canonical asset commit")
+if (!main.includes("MoonWitnessAssetProvider")) failures.push("asset provider")
+if (!app.includes("platformAdminContract") || !app.includes("platformAdminResources") || !app.includes("platformAdminCommandActions")) failures.push("shared Platform Admin contract")
+if (!app.includes("PlatformRoleMatrix") || !app.includes("PlatformBackendBoundary") || !app.includes("PlatformServiceRegistry") || !app.includes("PlatformAdminVisual")) failures.push("shared Platform Admin components")
+if (!app.includes("NeonAuthUIProvider") || !app.includes("AuthView")) failures.push("Managed Better Auth UI")
+if (!app.includes("platformAdminContract.navigation.find")) failures.push("contract-driven routing")
+if (!runtime.includes("platformRpc") || !runtime.includes('"Accept-Profile"') || !runtime.includes('"Content-Profile"')) failures.push("Data API RPC client")
+
+for (const forbidden of [
+  "localStorage",
+  "initialUsers",
+  "initialAudit",
+  "LOCAL FIXTURE",
+  "browser-persisted fixture",
+  "admin@moonwitness.local",
+  "Rocksoul Admin",
+]) {
+  if (app.includes(forbidden) || runtime.includes(forbidden) || readme.includes(forbidden)) failures.push("forbidden fixture marker: " + forbidden)
 }
-for (const route of ["/users", "/authorization", "/moderation", "/service-status", "/audit", "/settings", "/system-states"]) {
-  if (!app.includes('case "' + route + '"')) failures.push("platform route " + route)
+
+if (runtimeConfig.schemaVersion !== 1) failures.push("runtime config schema")
+if (runtimeConfig.security?.mode !== "jwt-rls-rpc" || runtimeConfig.security?.anonymousAccess !== false) failures.push("runtime security mode")
+for (const endpoint of [runtimeConfig.auth?.baseUrl, runtimeConfig.dataApi?.baseUrl]) {
+  if (typeof endpoint !== "string" || !endpoint.startsWith("https://")) failures.push("HTTPS runtime endpoint")
 }
-for (const forbidden of ["KanbanScreen", "CalendarScreen", "ChatScreen", "AIWorkspaceScreen"]) {
-  if (app.includes(forbidden)) failures.push("Crayon workspace leaked into Platform: " + forbidden)
+for (const secretKey of ["DATABASE_URL", "password", "secret", "token"]) {
+  if (runtimeConfigRaw.toLowerCase().includes(secretKey.toLowerCase())) failures.push("runtime config contains secret-like key: " + secretKey)
 }
-for (const proof of ["UsersScreen", "AuthorizationScreen", "ModerationScreen", "ServiceStatusScreen", "AuditScreen", "SettingsScreen", "SystemStatesScreen", "NotFoundScreen"]) {
-  if (!app.includes("function " + proof)) failures.push("screen " + proof)
-}
-if (!app.includes("commandActions={platformCommands}")) failures.push("platform command palette")
-if (!app.includes("LOCAL FIXTURE") || !app.includes("NOT CONNECTED")) failures.push("backend boundary disclosure")
+
 if (!workflow.includes("npm install") || !workflow.includes("npm run ci") || !workflow.includes("node-version: 24")) failures.push("full platform CI")
 if (!vercel.includes('"destination": "/index.html"')) failures.push("Vercel SPA rewrite")
 
 if (failures.length) {
-  console.error("Platform UI audit failed:")
+  console.error("Platform closure audit failed:")
   failures.forEach((failure) => console.error("- " + failure))
   process.exit(1)
 }
-console.log("Platform UI audit passed: admin/IAM boundaries, pinned UI/assets, CI, and routes are explicit.")
+console.log("Platform closure audit passed: contract-driven UI, Managed Better Auth, JWT/RLS RPC data plane, and no local authority fixtures.")

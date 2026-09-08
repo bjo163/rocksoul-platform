@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "environment": "production",
+  "auth": {
+    "baseUrl": "https://ep-calm-silence-b3s2icrd.neonauth.c-4.ap-southeast-1.aws.neon.tech/neondb/auth",
+    "provider": "managed-better-auth"
+  },
+  "dataApi": {
+    "baseUrl": "https://ep-calm-silence-b3s2icrd.apirest.c-4.ap-southeast-1.aws.neon.tech/neondb/rest/v1",
+    "schema": "platform"
+  },
+  "database": {
+    "projectId": "mute-sunset-98676940",
+    "branch": "main",
+    "region": "aws-ap-southeast-1"
+  },
+  "security": {
+    "mode": "jwt-rls-rpc",
+    "anonymousAccess": false
+  }
+}
