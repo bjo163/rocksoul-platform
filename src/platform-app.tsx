@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react"
 import {
   ApplicationActionsProvider,
   ApplicationShell,
@@ -7,213 +13,210 @@ import {
   Button,
   Input,
   MetricTile,
-  ModerationQueue,
   MoonWitnessPersonaAvatar,
-  RepositoryMonitor,
+  PlatformAdminVisual,
+  PlatformBackendBoundary,
+  PlatformRoleMatrix,
+  PlatformServiceRegistry,
+  ROCKSOUL_ASSETS_SYNC,
   StatePanel,
-  type AppCommandAction,
+  SubmissionCard,
+  Switch,
+  platformAdminCommandActions,
+  platformAdminContract,
+  platformAdminPermissions,
+  platformAdminResources,
   type AppNotification,
-  type AppResource,
   type ApplicationActions,
+  type PlatformAdminRoleId,
+  type PlatformAdminScreenId,
+  type PlatformRuntimeState,
+  type PlatformServiceRuntime,
 } from "@rocksoul/ui"
+import { AuthView, NeonAuthUIProvider } from "@neondatabase/auth-ui"
+import packageMetadata from "../package.json"
+import {
+  createPlatformAuthClient,
+  loadRuntimeConfig,
+  platformRpc,
+  probe,
+  type PlatformAuthClient,
+  type PlatformRuntimeConfig,
+  type PlatformSession,
+} from "./runtime"
 
-export const ROCKSOUL_UI_PIN = "e25978b8745046510fc071e9cc05a5d74a1ff650"
+type PlatformUserState = "active" | "invited" | "suspended"
+type ModerationState = "unverified" | "in-review" | "needs-context" | "verified" | "rejected"
 
-const platformPermissions = [
-  "authenticated",
-  "iam:read",
-  "authorization:read",
-  "moderation:read",
-  "settings:read",
-  "service:read",
-  "audit:read",
-] as const
-
-const platformResources: AppResource[] = [
-  {
-    id: "dashboard",
-    label: "Dashboard",
-    href: "/",
-    group: "System",
-    description: "Admin posture, identity operations, and product health.",
-    shortcut: "D",
-    requiredPermission: "authenticated",
-  },
-  {
-    id: "users",
-    label: "Users & Roles",
-    href: "/users",
-    group: "Resource",
-    description: "Platform-owned accounts, invitations, roles, and access posture.",
-    shortcut: "U",
-    requiredPermission: "iam:read",
-  },
-  {
-    id: "authorization",
-    label: "Authorization",
-    href: "/authorization",
-    group: "Resource",
-    description: "Role capability matrix and privileged-operation boundaries.",
-    shortcut: "A",
-    requiredPermission: "authorization:read",
-  },
-  {
-    id: "moderation",
-    label: "Moderation",
-    href: "/moderation",
-    group: "Resource",
-    description: "Community and product moderation authority.",
-    shortcut: "M",
-    requiredPermission: "moderation:read",
-  },
-  {
-    id: "service-status",
-    label: "Service Status",
-    href: "/service-status",
-    group: "System",
-    description: "Dependency posture and backend integration boundary.",
-    shortcut: "H",
-    requiredPermission: "service:read",
-  },
-  {
-    id: "audit",
-    label: "Audit Log",
-    href: "/audit",
-    group: "System",
-    description: "Inspectable operational events and privileged actions.",
-    shortcut: "L",
-    requiredPermission: "audit:read",
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    href: "/settings",
-    group: "Account",
-    description: "Platform-level product and operational configuration.",
-    shortcut: "S",
-    requiredPermission: "settings:read",
-  },
-  {
-    id: "system-states",
-    label: "System States",
-    href: "/system-states",
-    group: "System",
-    description: "Recovery language for error, empty, loading, offline, and forbidden.",
-    shortcut: "X",
-    requiredPermission: "service:read",
-  },
-]
-
-const platformCommands: AppCommandAction[] = [
-  { label: "Invite a platform user", href: "/users", shortcut: "U" },
-  { label: "Review moderation queue", href: "/moderation", shortcut: "M" },
-  { label: "Inspect service status", href: "/service-status", shortcut: "H" },
-]
-
-type UserRole = "admin" | "moderator" | "researcher"
-type UserState = "active" | "invited" | "suspended"
+interface PlatformActor {
+  id: string
+  authUserId: string
+  name: string
+  email: string
+  state: PlatformUserState
+  roles: PlatformAdminRoleId[]
+}
 
 interface PlatformUser {
   id: string
+  authUserId: string
   name: string
   email: string
-  role: UserRole
-  state: UserState
+  state: PlatformUserState
+  roles: PlatformAdminRoleId[]
+  createdAt: string
+}
+
+interface ModerationItem {
+  id: string
+  sourceType: string
+  sourceReference: string
+  title: string
+  summary?: string | null
+  state: ModerationState
+  payload: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
 }
 
 interface AuditEvent {
   id: string
-  timestamp: string
-  actor: string
+  actorId?: string | null
   action: string
-  resource: string
+  resourceType: string
+  resourceId?: string | null
   result: string
   traceId: string
+  metadata: Record<string, unknown>
+  createdAt: string
 }
 
-interface PlatformSettings {
-  organizationName: string
-  invitationsEnabled: boolean
-  maintenanceMode: boolean
+interface BootstrapData {
+  actor: PlatformActor
+  organization: {
+    id: string
+    slug: string
+    name: string
+  }
+  users: PlatformUser[]
+  moderation: ModerationItem[]
+  settings: Record<string, unknown>
+  audit: AuditEvent[]
 }
 
-const initialUsers: PlatformUser[] = [
-  { id: "USR-ADMIN-01", name: "Rocksoul Admin", email: "admin@moonwitness.local", role: "admin", state: "active" },
-  { id: "USR-MOD-01", name: "Platform Moderator", email: "moderator@moonwitness.local", role: "moderator", state: "active" },
-  { id: "USR-RESEARCH-01", name: "Research Consumer", email: "researcher@moonwitness.local", role: "researcher", state: "invited" },
-]
+interface SessionState {
+  user: PlatformSession["user"]
+  accessToken: string
+}
 
-const initialAudit: AuditEvent[] = [
-  { id: "A-001", timestamp: "07:19", actor: "system", action: "platform.ui.deployed", resource: "rocksoul-platform", result: "ready", traceId: "PLATFORM-UI-001" },
-  { id: "A-002", timestamp: "07:38", actor: "assets-bot", action: "brand.derivatives.generated", resource: "rocksoul-assets", result: "ready", traceId: "ASSETS-OG-001" },
-  { id: "A-003", timestamp: "07:49", actor: "ui-ci", action: "asset.freshness.checked", resource: "rocksoul-ui", result: "accepted", traceId: "UI-SYNC-001" },
-]
+function normalizePath(pathname: string) {
+  if (pathname.startsWith("/auth")) return "/"
+  if (pathname === "/") return pathname
+  return pathname.replace(/\/+$/, "") || "/"
+}
 
-const initialNotifications: AppNotification[] = [
-  {
-    id: "PLATFORM-MODE-1",
-    title: "Local fixture authority is active",
-    body: "Admin mutations persist in this browser until a central Platform IAM backend is connected.",
-    state: "unread",
-    variant: "system",
-  },
-  {
-    id: "PLATFORM-BOUNDARY-1",
-    title: "Research workspaces are outside Platform",
-    body: "Kanban, Calendar, Chat, and AI remain Crayon responsibilities.",
-    state: "read",
-    variant: "review",
-  },
-]
+function currentRole(actor: PlatformActor): PlatformAdminRoleId | undefined {
+  return actor.roles.find((role) => platformAdminContract.roles.some((item) => item.id === role))
+}
 
-function useStoredState<T>(key: string, initialValue: T) {
-  const [value, setValue] = useState<T>(() => {
-    if (typeof window === "undefined") return initialValue
-    try {
-      const saved = window.localStorage.getItem(key)
-      return saved ? JSON.parse(saved) as T : initialValue
-    } catch {
-      return initialValue
-    }
-  })
+function canOperate(actor: PlatformActor) {
+  return actor.state === "active" && actor.roles.length > 0
+}
+
+function canAdmin(actor: PlatformActor) {
+  return actor.state === "active" && actor.roles.includes("admin")
+}
+
+function canModerate(actor: PlatformActor) {
+  return actor.state === "active" && (actor.roles.includes("admin") || actor.roles.includes("moderator"))
+}
+
+function formatTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.valueOf())) return value
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date)
+}
+
+function userForAudit(event: AuditEvent, users: PlatformUser[]) {
+  if (!event.actorId) return "system"
+  return users.find((user) => user.authUserId === event.actorId)?.name ?? event.actorId
+}
+
+function roleLabel(actor: PlatformActor) {
+  return currentRole(actor) ?? "access pending"
+}
+
+function permissionsFor(actor: PlatformActor) {
+  return canOperate(actor) ? platformAdminPermissions : ["authenticated"]
+}
+
+function settingString(settings: Record<string, unknown>, key: string, fallback: string) {
+  const value = settings[key]
+  return typeof value === "string" ? value : fallback
+}
+
+function settingBoolean(settings: Record<string, unknown>, key: string, fallback: boolean) {
+  const value = settings[key]
+  return typeof value === "boolean" ? value : fallback
+}
+
+function useServiceHealth(config: PlatformRuntimeConfig, dataPlaneState: PlatformRuntimeState) {
+  const [services, setServices] = useState<PlatformServiceRuntime[]>([])
+  const uiDependency = packageMetadata.dependencies["@rocksoul/ui"] ?? ""
+  const uiCommit = uiDependency.split("#")[1] ?? "main"
+
+  const refresh = useCallback(async () => {
+    const assetsUrl =
+      "https://raw.githubusercontent.com/bjo163/rocksoul-assets/" +
+      ROCKSOUL_ASSETS_SYNC.acceptedMainCommit +
+      "/moonwitness/ui/v2/platform-admin.json"
+    const uiUrl =
+      "https://raw.githubusercontent.com/bjo163/rocksoul-ui/" +
+      uiCommit +
+      "/package.json"
+
+    const [assets, ui, platform] = await Promise.all([
+      probe(assetsUrl),
+      probe(uiUrl),
+      probe("/runtime-config.json"),
+    ])
+
+    setServices([
+      { id: "assets", state: assets, detail: "Canonical Platform visual contract / accepted main." },
+      { id: "ui", state: ui, detail: "Pinned @rocksoul/ui implementation." },
+      { id: "platform", state: platform, detail: window.location.host },
+      {
+        id: "iam-api",
+        state: dataPlaneState,
+        detail: config.database.projectId + " / " + config.database.region,
+      },
+    ])
+  }, [config, dataPlaneState, uiCommit])
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(key, JSON.stringify(value))
-    } catch {
-      // Local persistence is best-effort. The UI stays usable without storage.
-    }
-  }, [key, value])
+    void refresh()
+  }, [refresh])
 
-  return [value, setValue] as const
+  return { services, refresh }
 }
 
-function PlatformFrame({
-  activeResource,
-  title,
-  section,
-  notifications,
-  children,
-}: {
-  activeResource: string
-  title: string
-  section: string
-  notifications: AppNotification[]
-  children: ReactNode
-}) {
+function VisualContract({ screen }: { screen: PlatformAdminScreenId }) {
   return (
-    <ApplicationShell
-      activeResource={activeResource}
-      breadcrumbs={[{ label: "PLATFORM", href: "/" }, { label: section }, { label: title }]}
-      backendState="degraded"
-      user={{ name: "Rocksoul Admin", role: "admin" }}
-      permissions={platformPermissions}
-      resources={platformResources}
-      notifications={notifications}
-      commandActions={platformCommands}
-    >
-      <div className="platform-page">{children}</div>
-    </ApplicationShell>
+    <details className="platform-visual-contract">
+      <summary>
+        <span>CANONICAL VISUAL / {platformAdminContract.navigation.find((item) => item.id === screen)?.screen}</span>
+        <strong>View Rocksoul asset</strong>
+      </summary>
+      <div className="platform-visual-frame">
+        <PlatformAdminVisual
+          screen={screen}
+          alt={platformAdminContract.navigation.find((item) => item.id === screen)?.label + " canonical Platform Admin visual"}
+        />
+      </div>
+    </details>
   )
 }
 
@@ -240,548 +243,866 @@ function PageHeading({
   )
 }
 
-function DashboardScreen({
+function PlatformFrame({
+  active,
+  actor,
+  backendState,
   notifications,
-  users,
-  assetCommit,
-  uiCommit,
+  children,
 }: {
+  active: PlatformAdminScreenId
+  actor: PlatformActor
+  backendState: "online" | "degraded" | "offline"
   notifications: AppNotification[]
-  users: PlatformUser[]
-  assetCommit: string
-  uiCommit: string
+  children: ReactNode
 }) {
-  const active = users.filter((user) => user.state === "active").length
-  const privileged = users.filter((user) => user.role === "admin" || user.role === "moderator").length
+  const nav = platformAdminContract.navigation.find((item) => item.id === active)
+  return (
+    <ApplicationShell
+      activeResource={active}
+      breadcrumbs={[
+        { label: "PLATFORM", href: "/" },
+        { label: nav?.group ?? "SYSTEM" },
+        { label: nav?.label ?? active },
+      ]}
+      backendState={backendState}
+      user={{ name: actor.name, role: roleLabel(actor) }}
+      permissions={permissionsFor(actor)}
+      resources={platformAdminResources}
+      notifications={notifications}
+      commandActions={platformAdminCommandActions}
+    >
+      <div className="platform-page">
+        {children}
+        <VisualContract screen={active} />
+      </div>
+    </ApplicationShell>
+  )
+}
+
+function AccessPending({ actor }: { actor: PlatformActor }) {
+  return (
+    <div className="platform-stack">
+      <PlatformBackendBoundary
+        state="connected"
+        detail="Authentication is valid and the Platform data plane is online. This account has no operational role yet."
+      />
+      <StatePanel
+        state="forbidden"
+        requiredPermission="platform:role"
+        currentRole={roleLabel(actor)}
+      />
+    </div>
+  )
+}
+
+function DashboardScreen({
+  actor,
+  data,
+  services,
+  backendState,
+  notifications,
+}: {
+  actor: PlatformActor
+  data: BootstrapData
+  services: PlatformServiceRuntime[]
+  backendState: "online" | "degraded" | "offline"
+  notifications: AppNotification[]
+}) {
+  const privileged = data.users.filter((user) => user.roles.includes("admin") || user.roles.includes("moderator")).length
+  const unresolved = data.moderation.filter((item) => item.state === "unverified" || item.state === "needs-context" || item.state === "in-review").length
 
   return (
-    <PlatformFrame activeResource="dashboard" title="Dashboard" section="HOME" notifications={notifications}>
+    <PlatformFrame active="dashboard" actor={actor} backendState={backendState} notifications={notifications}>
       <PageHeading
         eyebrow="ADMIN / IAM / OPERATIONS"
         title="Govern the product."
-        copy="Identity authority, moderation, configuration, and operational health stay separate from research adjudication."
+        copy="Live identity, moderation, configuration, and service posture. Research truth remains outside Platform."
       />
-      <div className="platform-metrics">
-        <MetricTile label="Platform users" value={String(users.length).padStart(2, "0")} context={String(active) + " active"} />
-        <MetricTile label="Privileged roles" value={String(privileged).padStart(2, "0")} context="admin + moderator" tone="warning" />
-        <MetricTile label="Backend mode" value="LOCAL" context="browser-persisted fixture" tone="warning" />
-        <MetricTile label="Unread" value={String(notifications.filter((item) => item.state === "unread").length)} context="platform notifications" />
-      </div>
 
-      <div className="platform-grid platform-grid-two">
-        <section className="platform-card">
-          <div className="platform-card-head">
-            <div>
-              <p className="platform-kicker">Authority boundary</p>
-              <h2>Platform owns admin/IAM.</h2>
-            </div>
-            <Badge variant="verified">ENFORCED IN NAV</Badge>
+      {!canOperate(actor) ? <AccessPending actor={actor} /> : (
+        <>
+          <div className="platform-metrics">
+            <MetricTile label="Platform identities" value={String(data.users.length)} context="Server-authoritative directory" />
+            <MetricTile label="Privileged roles" value={String(privileged)} context="Admin + moderator" tone={privileged ? "warning" : "neutral"} />
+            <MetricTile label="Moderation attention" value={String(unresolved)} context="Open / needs context / in review" tone={unresolved ? "warning" : "good"} />
+            <MetricTile label="Audit events" value={String(data.audit.length)} context="Latest server traces loaded" />
           </div>
-          <div className="platform-list">
-            <div className="platform-row"><span>ACCOUNT / USER / ROLE</span><strong>PLATFORM</strong></div>
-            <div className="platform-row"><span>MODERATION AUTHORITY</span><strong>PLATFORM</strong></div>
-            <div className="platform-row"><span>RESEARCH WORKSPACE</span><strong>CRAYON</strong></div>
-            <div className="platform-row"><span>CANONICAL RESEARCH</span><strong>OWNER REPOS</strong></div>
-          </div>
-        </section>
 
-        <section className="platform-card">
-          <div className="platform-card-head">
-            <div>
-              <p className="platform-kicker">Pinned delivery</p>
-              <h2>Reproducible UI inputs.</h2>
-            </div>
-            <Badge variant="info">PINNED</Badge>
+          <div className="platform-grid platform-grid-two">
+            <section className="platform-card">
+              <div className="platform-card-head">
+                <div>
+                  <p className="platform-kicker">Authority boundary</p>
+                  <h2>Administration without research ownership.</h2>
+                </div>
+                <Badge variant="verified">SERVER AUTHORITY</Badge>
+              </div>
+              <div className="platform-list">
+                <div className="platform-row"><span>ACCOUNT / USER / ROLE</span><strong>PLATFORM</strong></div>
+                <div className="platform-row"><span>PARTICIPATION</span><strong>COMMUNITY</strong></div>
+                <div className="platform-row"><span>RESEARCH WORKSPACE</span><strong>CRAYON</strong></div>
+                <div className="platform-row"><span>CANONICAL RESEARCH</span><strong>OWNER REPOS</strong></div>
+              </div>
+            </section>
+
+            <PlatformServiceRegistry runtime={services} />
           </div>
-          <dl className="platform-definition-list">
-            <div><dt>@rocksoul/ui</dt><dd>{uiCommit.slice(0, 12)}</dd></div>
-            <div><dt>rocksoul-assets accepted main</dt><dd>{assetCommit.slice(0, 12)}</dd></div>
-            <div><dt>Runtime</dt><dd>React 19 / Vite 8 / Node 24</dd></div>
-            <div><dt>Persistence</dt><dd>Local fixture until IAM API exists</dd></div>
-          </dl>
-        </section>
-      </div>
+        </>
+      )}
     </PlatformFrame>
   )
 }
 
-function UsersScreen({
-  notifications,
-  users,
-  setUsers,
-  record,
+function UserRow({
+  user,
+  actor,
+  busy,
+  onRole,
+  onState,
 }: {
-  notifications: AppNotification[]
-  users: PlatformUser[]
-  setUsers: React.Dispatch<React.SetStateAction<PlatformUser[]>>
-  record: (action: string, resource: string, result: string) => void
+  user: PlatformUser
+  actor: PlatformActor
+  busy: string | null
+  onRole: (id: string, role: PlatformAdminRoleId | "none") => Promise<void>
+  onState: (id: string, state: PlatformUserState) => Promise<void>
 }) {
-  const [name, setName] = useState("")
-  const [email, setEmail] = useState("")
+  const current = user.roles[0] ?? "none"
+  const [draft, setDraft] = useState<PlatformAdminRoleId | "none">(current)
 
-  const invite = () => {
-    const cleanName = name.trim()
-    const cleanEmail = email.trim().toLowerCase()
-    if (!cleanName || !cleanEmail.includes("@")) return
-    const id = "USR-" + String(Date.now())
-    setUsers((current) => [
-      ...current,
-      { id, name: cleanName, email: cleanEmail, role: "researcher", state: "invited" },
-    ])
-    record("iam.user.invited", id, "invited")
-    setName("")
-    setEmail("")
-  }
-
-  const toggleUser = (id: string) => {
-    setUsers((current) => current.map((user) => {
-      if (user.id !== id) return user
-      const nextState: UserState = user.state === "suspended" ? "active" : "suspended"
-      return { ...user, state: nextState }
-    }))
-    record("iam.user.state.changed", id, "updated")
-  }
+  useEffect(() => setDraft(current), [current])
 
   return (
-    <PlatformFrame activeResource="users" title="Users & Roles" section="IAM" notifications={notifications}>
+    <article className="platform-user-row">
+      <MoonWitnessPersonaAvatar
+        persona={current === "admin" ? "admin" : current === "moderator" ? "moderator" : "researcher"}
+        alt=""
+        className="platform-avatar"
+      />
+      <div className="platform-user-copy">
+        <strong>{user.name}</strong>
+        <span>{user.email}</span>
+        <code>{user.authUserId}</code>
+      </div>
+      <div className="platform-role-control">
+        <label>
+          <span>Platform role</span>
+          <select
+            value={draft}
+            disabled={!canAdmin(actor) || busy === user.id}
+            onChange={(event) => setDraft(event.currentTarget.value as PlatformAdminRoleId | "none")}
+          >
+            <option value="none">No role</option>
+            {platformAdminContract.roles.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}
+          </select>
+        </label>
+        <Button
+          size="sm"
+          variant="secondary"
+          loading={busy === user.id}
+          disabled={!canAdmin(actor) || draft === current}
+          onClick={() => void onRole(user.id, draft)}
+        >
+          Save role
+        </Button>
+      </div>
+      <div className="platform-user-state">
+        <Badge variant={user.state === "active" ? "verified" : user.state === "suspended" ? "prohibited" : "info"}>
+          {user.state}
+        </Badge>
+        <Button
+          size="sm"
+          variant={user.state === "suspended" ? "secondary" : "danger"}
+          disabled={!canAdmin(actor) || busy === user.id || user.id === actor.id}
+          onClick={() => void onState(user.id, user.state === "suspended" ? "active" : "suspended")}
+        >
+          {user.state === "suspended" ? "Activate" : "Suspend"}
+        </Button>
+      </div>
+    </article>
+  )
+}
+
+function UsersScreen({
+  actor,
+  data,
+  backendState,
+  notifications,
+  busy,
+  onRole,
+  onState,
+}: {
+  actor: PlatformActor
+  data: BootstrapData
+  backendState: "online" | "degraded" | "offline"
+  notifications: AppNotification[]
+  busy: string | null
+  onRole: (id: string, role: PlatformAdminRoleId | "none") => Promise<void>
+  onState: (id: string, state: PlatformUserState) => Promise<void>
+}) {
+  return (
+    <PlatformFrame active="users" actor={actor} backendState={backendState} notifications={notifications}>
       <PageHeading
         eyebrow="ACCOUNT / USER / ROLE"
         title="Users & roles."
-        copy="Platform is the authority surface for identity operations. Public profile data remains Community-owned."
+        copy="Accounts originate in Managed Better Auth. Platform assigns operational access without inventing a second identity provider."
+        action={<Badge variant={canAdmin(actor) ? "verified" : "info"}>{canAdmin(actor) ? "ADMIN WRITE" : "READ ONLY"}</Badge>}
       />
 
-      <div className="platform-grid platform-grid-two">
-        <section className="platform-card">
-          <p className="platform-kicker">Invite user</p>
-          <h2>Create a controlled invitation.</h2>
-          <div className="platform-form">
-            <Input label="Display name" value={name} onChange={(event) => setName(event.currentTarget.value)} placeholder="Name" />
-            <Input label="Email" type="email" value={email} onChange={(event) => setEmail(event.currentTarget.value)} placeholder="name@example.com" />
-            <Button onClick={invite} disabled={!name.trim() || !email.includes("@")}>Invite researcher</Button>
-          </div>
-          <p className="platform-note">Fixture mode / invitations persist in this browser and are written to the local audit trail.</p>
-        </section>
-
-        <section className="platform-card">
-          <p className="platform-kicker">Role posture</p>
-          <h2>Privilege stays explicit.</h2>
-          <div className="platform-list">
-            <div className="platform-row"><span>Admin</span><Badge variant="prohibited">PRIVILEGED</Badge></div>
-            <div className="platform-row"><span>Moderator</span><Badge variant="partial">ELEVATED</Badge></div>
-            <div className="platform-row"><span>Researcher</span><Badge variant="verified">CONSUMER</Badge></div>
-          </div>
-        </section>
-      </div>
-
-      <section className="platform-card platform-card-spaced">
-        <div className="platform-card-head">
-          <div><p className="platform-kicker">Directory</p><h2>{users.length} platform identities</h2></div>
-          <Badge variant="neutral">LOCAL FIXTURE</Badge>
-        </div>
-        <div className="platform-user-list">
-          {users.map((user) => (
-            <article key={user.id} className="platform-user-row">
-              <MoonWitnessPersonaAvatar
-                persona={user.role === "admin" ? "admin" : user.role === "moderator" ? "moderator" : "researcher"}
-                alt=""
-                className="platform-avatar"
-              />
-              <div className="platform-user-copy">
-                <strong>{user.name}</strong>
-                <span>{user.email}</span>
-                <code>{user.id}</code>
+      {!canOperate(actor) ? <AccessPending actor={actor} /> : (
+        <>
+          <section className="platform-card">
+            <div className="platform-card-head">
+              <div>
+                <p className="platform-kicker">Onboarding model</p>
+                <h2>Identity first. Privilege second.</h2>
               </div>
-              <Badge variant={user.role === "admin" ? "prohibited" : user.role === "moderator" ? "partial" : "verified"}>{user.role}</Badge>
-              <Badge variant={user.state === "active" ? "verified" : user.state === "suspended" ? "prohibited" : "info"}>{user.state}</Badge>
-              <Button size="sm" variant={user.state === "suspended" ? "secondary" : "ghost"} onClick={() => toggleUser(user.id)}>
-                {user.state === "suspended" ? "Reactivate" : "Suspend"}
-              </Button>
-            </article>
-          ))}
-        </div>
-      </section>
+              <Badge variant="supported">NEON AUTH</Badge>
+            </div>
+            <p className="platform-copy">
+              New accounts register through the authentication surface and enter this directory without a Platform role.
+              An existing Platform admin may then grant Admin, Moderator, or Researcher access. No browser-side invitation record is created.
+            </p>
+          </section>
+
+          <section className="platform-card platform-card-spaced">
+            <div className="platform-card-head">
+              <div><p className="platform-kicker">Directory</p><h2>{data.users.length} authenticated profiles</h2></div>
+              <Badge variant="neutral">RPC / LIVE</Badge>
+            </div>
+            <div className="platform-user-list">
+              {data.users.length ? data.users.map((user) => (
+                <UserRow
+                  key={user.id}
+                  user={user}
+                  actor={actor}
+                  busy={busy}
+                  onRole={onRole}
+                  onState={onState}
+                />
+              )) : <StatePanel state="empty" />}
+            </div>
+          </section>
+        </>
+      )}
     </PlatformFrame>
   )
 }
 
 function AuthorizationScreen({
+  actor,
+  backendState,
   notifications,
-  record,
 }: {
+  actor: PlatformActor
+  backendState: "online" | "degraded" | "offline"
   notifications: AppNotification[]
-  record: (action: string, resource: string, result: string) => void
 }) {
-  const rows = [
-    ["Inspect platform users", "ALLOWED", "ALLOWED", "READ ONLY"],
-    ["Manage user state", "ALLOWED", "LIMITED", "DENIED"],
-    ["Moderate submissions", "ALLOWED", "ALLOWED", "DENIED"],
-    ["Change system config", "ALLOWED", "DENIED", "DENIED"],
-    ["Publish research conclusion", "DENIED", "DENIED", "DENIED"],
-  ]
-
   return (
-    <PlatformFrame activeResource="authorization" title="Authorization" section="IAM" notifications={notifications}>
+    <PlatformFrame active="authorization" actor={actor} backendState={backendState} notifications={notifications}>
       <PageHeading
-        eyebrow="ROLE / PERMISSION / BOUNDARY"
+        eyebrow="ROLE / CAPABILITY / BOUNDARY"
         title="Authorization."
-        copy="Permissions are visible before privileged operations. Platform authority never turns into research adjudication."
-        action={<Button variant="secondary" onClick={() => record("authorization.review.requested", "role-matrix", "queued")}>Review matrix</Button>}
+        copy="The capability matrix comes from rocksoul-ui's canonical Platform contract; database mutations apply the stricter server-side role checks."
       />
-      <section className="platform-card platform-card-spaced">
-        <div className="platform-table-wrap">
-          <table className="platform-table">
-            <thead><tr><th>Capability</th><th>Admin</th><th>Moderator</th><th>Researcher</th></tr></thead>
-            <tbody>
-              {rows.map(([capability, admin, moderator, researcher]) => (
-                <tr key={capability}>
-                  <th>{capability}</th>
-                  {[admin, moderator, researcher].map((value, index) => (
-                    <td key={String(index)}>
-                      <Badge variant={value === "ALLOWED" ? "verified" : value === "LIMITED" || value === "READ ONLY" ? "partial" : "prohibited"}>{value}</Badge>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="platform-boundary">RULE / Platform can govern who may operate a workflow. It cannot convert a relationship into a research verdict.</p>
-      </section>
+      {!canOperate(actor) ? <AccessPending actor={actor} /> : (
+        <section className="platform-card">
+          <div className="platform-card-head">
+            <div><p className="platform-kicker">Canonical matrix</p><h2>Who may operate what.</h2></div>
+            <Badge variant="verified">CONTRACT DRIVEN</Badge>
+          </div>
+          <PlatformRoleMatrix currentRole={currentRole(actor)} />
+        </section>
+      )}
     </PlatformFrame>
   )
 }
 
 function ModerationScreen({
+  actor,
+  data,
+  backendState,
   notifications,
-  record,
+  busy,
+  onModerate,
 }: {
+  actor: PlatformActor
+  data: BootstrapData
+  backendState: "online" | "degraded" | "offline"
   notifications: AppNotification[]
-  record: (action: string, resource: string, result: string) => void
+  busy: string | null
+  onModerate: (id: string, state: ModerationState) => Promise<void>
 }) {
-  const [submission, setSubmission] = useStoredState("rocksoul-platform:moderation", {
-    id: "SUB-0042-01",
-    state: "unverified" as "unverified" | "in-review" | "verified" | "rejected" | "needs-context",
-    title: "Possible second trace",
-    body: "Community submission references a second trace but provenance is incomplete.",
-  })
-
   return (
-    <PlatformFrame activeResource="moderation" title="Moderation" section="OPERATIONS" notifications={notifications}>
+    <PlatformFrame active="moderation" actor={actor} backendState={backendState} notifications={notifications}>
       <PageHeading
-        eyebrow="MODERATION AUTHORITY"
+        eyebrow="MODERATION / AUTHORITY"
         title="Moderation operations."
-        copy="Community participation remains non-canonical until review. Platform governs moderation actions, not research truth."
+        copy="Participation state may change here; canonical research records do not."
+        action={<Badge variant={canModerate(actor) ? "verified" : "restricted"}>{canModerate(actor) ? "WRITE ENABLED" : "READ RESTRICTED"}</Badge>}
       />
-      <div className="platform-card platform-card-spaced">
-        <ModerationQueue
-          submission={submission}
-          onSelectAll={() => record("moderation.selection.all", submission.id, "selected")}
-          onRequestContext={(id) => {
-            setSubmission((current) => ({ ...current, state: "needs-context" }))
-            record("moderation.context.requested", id, "needs-context")
-          }}
-          onReject={(id) => {
-            setSubmission((current) => ({ ...current, state: "rejected" }))
-            record("moderation.submission.rejected", id, "rejected")
-          }}
-          onBulkRequestContext={() => {
-            setSubmission((current) => ({ ...current, state: "needs-context" }))
-            record("moderation.bulk.context", submission.id, "needs-context")
-          }}
-          onReturnSelected={() => {
-            setSubmission((current) => ({ ...current, state: "in-review" }))
-            record("moderation.returned", submission.id, "in-review")
-          }}
-        />
-      </div>
+
+      {!canModerate(actor) ? (
+        <StatePanel state="forbidden" requiredPermission="moderation:read" currentRole={roleLabel(actor)} />
+      ) : data.moderation.length ? (
+        <div className="platform-card-grid">
+          {data.moderation.map((item) => (
+            <SubmissionCard
+              key={item.id}
+              id={item.id}
+              state={item.state}
+              title={item.title}
+              body={item.summary ?? "No summary supplied."}
+              canonicalEvidence={false}
+              source={item.sourceType + " / " + item.sourceReference}
+              reviewer={actor.name}
+              reviewActions={
+                <div className="platform-action-row">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={busy === item.id}
+                    onClick={() => void onModerate(item.id, "needs-context")}
+                  >
+                    Request context
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={busy === item.id}
+                    onClick={() => void onModerate(item.id, "verified")}
+                  >
+                    Verify participation
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    loading={busy === item.id}
+                    onClick={() => void onModerate(item.id, "rejected")}
+                  >
+                    Reject
+                  </Button>
+                </div>
+              }
+            />
+          ))}
+        </div>
+      ) : (
+        <StatePanel state="empty" />
+      )}
     </PlatformFrame>
   )
 }
 
 function ServiceStatusScreen({
+  actor,
+  backendState,
   notifications,
-  record,
-  assetCommit,
-  uiCommit,
+  services,
+  onRefresh,
 }: {
+  actor: PlatformActor
+  backendState: "online" | "degraded" | "offline"
   notifications: AppNotification[]
-  record: (action: string, resource: string, result: string) => void
-  assetCommit: string
-  uiCommit: string
+  services: PlatformServiceRuntime[]
+  onRefresh: () => Promise<void>
 }) {
-  const dependencies = [
-    { repo: "rocksoul-assets", status: "online" as const, queue: 0, errors: 0 },
-    { repo: "rocksoul-ui", status: "online" as const, queue: 0, errors: 0 },
-    { repo: "rocksoul-platform", status: "online" as const, queue: 0, errors: 0 },
-  ]
-
   return (
-    <PlatformFrame activeResource="service-status" title="Service Status" section="SYSTEM" notifications={notifications}>
+    <PlatformFrame active="service-status" actor={actor} backendState={backendState} notifications={notifications}>
       <PageHeading
-        eyebrow="PRODUCT / SERVICE HEALTH"
+        eyebrow="DEPENDENCY / HEALTH"
         title="Service status."
-        copy="Build dependencies are pinned and inspectable. Central IAM persistence and telemetry still require a dedicated Platform backend."
+        copy="Health is probed from deployed endpoints and accepted source refs, never baked as a green fixture."
+        action={<Button variant="secondary" onClick={() => void onRefresh()}>Probe services</Button>}
       />
-      <div className="platform-banner platform-banner-warning">
-        <div><p className="platform-kicker">Backend integration</p><strong>NOT CONNECTED</strong></div>
-        <p>The shipped UI uses browser-persisted fixture state. No external IAM database or identity provider is falsely presented as production-ready.</p>
-        <Badge variant="partial">DEGRADED</Badge>
-      </div>
-      <section className="platform-card platform-card-spaced">
-        <RepositoryMonitor
-          repositories={dependencies}
-          onSyncAll={() => record("service.dependencies.checked", "platform-build", "ready")}
-          onInspect={(repo) => record("service.dependency.inspected", repo, "ready")}
-        />
-      </section>
-      <section className="platform-card platform-card-spaced">
-        <p className="platform-kicker">Pinned inputs</p>
-        <dl className="platform-definition-list">
-          <div><dt>UI commit</dt><dd>{uiCommit}</dd></div>
-          <div><dt>Accepted asset main</dt><dd>{assetCommit}</dd></div>
-          <div><dt>Platform frontend</dt><dd>Vercel / Vite</dd></div>
-          <div><dt>IAM data plane</dt><dd>External dependency not provisioned</dd></div>
-        </dl>
-      </section>
+      {!canOperate(actor) ? <AccessPending actor={actor} /> : <PlatformServiceRegistry runtime={services} />}
     </PlatformFrame>
   )
 }
 
 function AuditScreen({
+  actor,
+  data,
+  backendState,
   notifications,
-  audit,
 }: {
+  actor: PlatformActor
+  data: BootstrapData
+  backendState: "online" | "degraded" | "offline"
   notifications: AppNotification[]
-  audit: AuditEvent[]
 }) {
   return (
-    <PlatformFrame activeResource="audit" title="Audit Log" section="SYSTEM" notifications={notifications}>
+    <PlatformFrame active="audit" actor={actor} backendState={backendState} notifications={notifications}>
       <PageHeading
-        eyebrow="ADMIN AUDIT"
-        title="Operational log."
-        copy="Every local fixture mutation is inspectable here. A production backend must persist the same semantics server-side."
+        eyebrow="TRACE / ACTOR / RESULT"
+        title="Audit log."
+        copy="Privileged state changes receive server-generated trace IDs. Empty means no audited mutation exists yet."
       />
-      <section className="platform-card platform-audit">
-        {audit.length ? audit.map((event) => (
-          <AuditEventRow
-            key={event.id}
-            timestamp={event.timestamp}
-            actor={event.actor}
-            action={event.action}
-            resource={event.resource}
-            result={event.result}
-            traceId={event.traceId}
-          />
-        )) : <StatePanel state="empty" />}
-      </section>
+      {!canOperate(actor) ? <AccessPending actor={actor} /> : (
+        <section className="platform-card platform-audit">
+          <div className="platform-card-head">
+            <div><p className="platform-kicker">Latest server events</p><h2>{data.audit.length} traces loaded</h2></div>
+            <Badge variant="verified">SERVER GENERATED</Badge>
+          </div>
+          {data.audit.length ? data.audit.map((event) => (
+            <AuditEventRow
+              key={event.id}
+              timestamp={formatTime(event.createdAt)}
+              actor={userForAudit(event, data.users)}
+              action={event.action}
+              resource={(event.resourceType + " / " + (event.resourceId ?? "—"))}
+              result={event.result}
+              traceId={event.traceId}
+            />
+          )) : <StatePanel state="empty" />}
+        </section>
+      )}
     </PlatformFrame>
   )
 }
 
 function SettingsScreen({
+  actor,
+  data,
+  backendState,
   notifications,
-  settings,
-  setSettings,
-  record,
+  busy,
+  onSetting,
 }: {
+  actor: PlatformActor
+  data: BootstrapData
+  backendState: "online" | "degraded" | "offline"
   notifications: AppNotification[]
-  settings: PlatformSettings
-  setSettings: React.Dispatch<React.SetStateAction<PlatformSettings>>
-  record: (action: string, resource: string, result: string) => void
+  busy: string | null
+  onSetting: (key: string, value: unknown) => Promise<void>
 }) {
-  const [draftName, setDraftName] = useState(settings.organizationName)
+  const [organizationName, setOrganizationName] = useState(
+    settingString(data.settings, "organizationName", data.organization.name),
+  )
+  const invitationsEnabled = settingBoolean(data.settings, "invitationsEnabled", true)
+  const maintenanceMode = settingBoolean(data.settings, "maintenanceMode", false)
 
-  const save = () => {
-    setSettings((current) => ({ ...current, organizationName: draftName.trim() || current.organizationName }))
-    record("settings.organization.updated", "platform", "saved")
-  }
+  useEffect(() => {
+    setOrganizationName(settingString(data.settings, "organizationName", data.organization.name))
+  }, [data.organization.name, data.settings])
 
   return (
-    <PlatformFrame activeResource="settings" title="Settings" section="CONFIG" notifications={notifications}>
+    <PlatformFrame active="settings" actor={actor} backendState={backendState} notifications={notifications}>
       <PageHeading
-        eyebrow="SYSTEM CONFIG"
-        title="Platform settings."
-        copy="Configuration controls product operations. It does not copy or mutate canonical research records."
+        eyebrow="PRODUCT / CONFIGURATION"
+        title="Settings."
+        copy="Operational configuration is stored in Postgres and every write is audited."
+        action={<Badge variant={canAdmin(actor) ? "verified" : "info"}>{canAdmin(actor) ? "ADMIN WRITE" : "READ ONLY"}</Badge>}
       />
-      <div className="platform-grid platform-grid-two">
-        <section className="platform-card">
-          <p className="platform-kicker">Organization</p>
-          <h2>Identity context.</h2>
-          <div className="platform-form">
-            <Input label="Organization name" value={draftName} onChange={(event) => setDraftName(event.currentTarget.value)} />
-            <Button onClick={save}>Save organization</Button>
-          </div>
-        </section>
-        <section className="platform-card">
-          <p className="platform-kicker">Operational toggles</p>
-          <h2>Explicit system controls.</h2>
-          <label className="platform-toggle">
-            <input
-              type="checkbox"
-              checked={settings.invitationsEnabled}
-              onChange={(event) => {
-                const checked = event.currentTarget.checked
-                setSettings((current) => ({ ...current, invitationsEnabled: checked }))
-                record("settings.invitations.changed", "platform", checked ? "enabled" : "disabled")
-              }}
-            />
-            <span><strong>Invitations enabled</strong><small>Allow new local fixture invitations.</small></span>
-          </label>
-          <label className="platform-toggle">
-            <input
-              type="checkbox"
-              checked={settings.maintenanceMode}
-              onChange={(event) => {
-                const checked = event.currentTarget.checked
-                setSettings((current) => ({ ...current, maintenanceMode: checked }))
-                record("settings.maintenance.changed", "platform", checked ? "enabled" : "disabled")
-              }}
-            />
-            <span><strong>Maintenance mode</strong><small>Operational flag only; no research state is changed.</small></span>
-          </label>
-        </section>
-      </div>
+      {!canOperate(actor) ? <AccessPending actor={actor} /> : (
+        <div className="platform-grid platform-grid-two">
+          <section className="platform-card">
+            <p className="platform-kicker">Organization</p>
+            <h2>Product identity.</h2>
+            <div className="platform-form">
+              <Input
+                label="Organization name"
+                value={organizationName}
+                disabled={!canAdmin(actor)}
+                onChange={(event) => setOrganizationName(event.currentTarget.value)}
+              />
+              <Button
+                loading={busy === "organizationName"}
+                disabled={!canAdmin(actor) || !organizationName.trim()}
+                onClick={() => void onSetting("organizationName", organizationName.trim())}
+              >
+                Save organization
+              </Button>
+            </div>
+          </section>
+
+          <section className="platform-card">
+            <p className="platform-kicker">Operational controls</p>
+            <h2>Fail-safe switches.</h2>
+            <div className="platform-switches">
+              <Switch
+                label="Account onboarding"
+                description="Controls whether Platform considers new account onboarding open."
+                checked={invitationsEnabled}
+                disabled={!canAdmin(actor) || busy === "invitationsEnabled"}
+                onChange={(event) => void onSetting("invitationsEnabled", event.currentTarget.checked)}
+              />
+              <Switch
+                label="Maintenance mode"
+                description="Marks Platform operations as intentionally constrained."
+                checked={maintenanceMode}
+                disabled={!canAdmin(actor) || busy === "maintenanceMode"}
+                onChange={(event) => void onSetting("maintenanceMode", event.currentTarget.checked)}
+              />
+            </div>
+          </section>
+        </div>
+      )}
     </PlatformFrame>
   )
 }
 
-function SystemStatesScreen({ notifications }: { notifications: AppNotification[] }) {
+function SystemStatesScreen({
+  actor,
+  backendState,
+  notifications,
+  onRetry,
+}: {
+  actor: PlatformActor
+  backendState: "online" | "degraded" | "offline"
+  notifications: AppNotification[]
+  onRetry: () => Promise<void>
+}) {
   return (
-    <PlatformFrame activeResource="system-states" title="System States" section="SYSTEM" notifications={notifications}>
+    <PlatformFrame active="system-states" actor={actor} backendState={backendState} notifications={notifications}>
       <PageHeading
-        eyebrow="RECOVERY LANGUAGE"
+        eyebrow="RECOVERY / LANGUAGE"
         title="System states."
-        copy="Error, empty, loading, offline, and forbidden states use the shared Rocksoul UI recovery grammar."
+        copy="Loading, empty, error, offline, forbidden, and unconfigured states share the same recovery grammar."
       />
       <div className="platform-state-grid">
-        <StatePanel state="error" traceId="PLATFORM-QUERY-001" />
-        <StatePanel state="empty" />
         <StatePanel state="loading" />
-        <StatePanel state="offline" lastKnownState="Local fixture state remains available." />
-        <StatePanel state="forbidden" requiredPermission="settings:write" currentRole="moderator" />
+        <StatePanel state="empty" />
+        <StatePanel state="error" traceId="RUNTIME TRACE" onRetry={onRetry} />
+        <StatePanel state="offline" lastKnownState="Server state is never synthesized locally." onRetry={onRetry} />
+        <StatePanel state="forbidden" requiredPermission="platform:role" currentRole={roleLabel(actor)} />
+        <PlatformBackendBoundary state="unconfigured" detail="Used when deployment configuration is absent or invalid. Mutations stay unavailable." />
       </div>
     </PlatformFrame>
   )
 }
 
 function NotFoundScreen({
+  actor,
+  backendState,
   notifications,
-  path,
 }: {
+  actor: PlatformActor
+  backendState: "online" | "degraded" | "offline"
   notifications: AppNotification[]
-  path: string
 }) {
-  const isConsoleRoute = path.startsWith("/work/") || path === "/chat" || path === "/ai"
   return (
-    <PlatformFrame activeResource="dashboard" title="Not Found" section="BOUNDARY" notifications={notifications}>
+    <PlatformFrame active="dashboard" actor={actor} backendState={backendState} notifications={notifications}>
       <PageHeading
-        eyebrow="404 / PLATFORM BOUNDARY"
-        title={isConsoleRoute ? "That belongs to Crayon." : "Not a Platform route."}
-        copy={isConsoleRoute
-          ? "Research workspaces are intentionally not duplicated inside the administration layer."
-          : "The requested route is not registered in the Platform administration contract."}
-        action={<a className="platform-link-button" href="/">Return to dashboard</a>}
+        eyebrow="BOUNDARY / NOT FOUND"
+        title="Not a Platform route."
+        copy="Research workspace routes belong to Crayon. Use the contract-driven Platform navigation to continue."
+        action={<Button onClick={() => { window.location.href = "/" }}>Dashboard</Button>}
       />
-      <section className="platform-card platform-card-spaced">
-        <p className="platform-kicker">Requested path</p>
-        <code className="platform-path">{path}</code>
+      <section className="platform-card">
+        <Badge variant="prohibited">404 / BOUNDARY</Badge>
+        <p className="platform-copy">No fallback screen or hidden workspace has been mounted at this path.</p>
       </section>
     </PlatformFrame>
   )
 }
 
-export function PlatformApp({
-  assetCommit,
-  uiCommit,
-}: {
-  assetCommit: string
-  uiCommit: string
-}) {
-  const [users, setUsers] = useStoredState<PlatformUser[]>("rocksoul-platform:users", initialUsers)
-  const [audit, setAudit] = useStoredState<AuditEvent[]>("rocksoul-platform:audit", initialAudit)
-  const [notifications, setNotifications] = useStoredState<AppNotification[]>("rocksoul-platform:notifications", initialNotifications)
-  const [settings, setSettings] = useStoredState<PlatformSettings>("rocksoul-platform:settings", {
-    organizationName: "MoonWitness",
-    invitationsEnabled: true,
-    maintenanceMode: false,
-  })
+function AuthGate({ config }: { config: PlatformRuntimeConfig }) {
+  const authPath = window.location.pathname.startsWith("/auth/")
+    ? window.location.pathname.split("/").filter(Boolean).pop() ?? "sign-in"
+    : "sign-in"
 
-  const record = (action: string, resource: string, result: string) => {
-    const now = new Date()
-    const id = "AUD-" + String(now.getTime())
-    const timestamp = now.toISOString().slice(11, 16)
-    const traceId = "TRACE-" + String(now.getTime())
-    setAudit((current) => [
-      { id, timestamp, actor: "platform-admin", action, resource, result, traceId },
-      ...current,
-    ].slice(0, 100))
-    setNotifications((current) => [
-      {
-        id: "N-" + String(now.getTime()),
-        title: action.replaceAll(".", " "),
-        body: resource + " / " + result,
-        state: "unread" as const,
-        variant: "system" as const,
-      },
-      ...current,
-    ].slice(0, 20))
+  return (
+    <main className="platform-auth-shell">
+      <section className="platform-auth-copy">
+        <p className="platform-kicker">MOONWITNESS × ROCKSOUL</p>
+        <h1>Platform authority starts with verified identity.</h1>
+        <p>
+          Sign in or create an account through Managed Better Auth. Authentication alone grants no Platform role;
+          operational access is promoted separately and audited.
+        </p>
+        <div className="platform-auth-posture">
+          <Badge variant="supported">MANAGED BETTER AUTH</Badge>
+          <Badge variant="verified">EMAIL VERIFIED</Badge>
+          <Badge variant="neutral">JWT / RLS / RPC</Badge>
+        </div>
+        <dl className="platform-runtime-meta">
+          <div><dt>Region</dt><dd>{config.database.region}</dd></div>
+          <div><dt>Database branch</dt><dd>{config.database.branch}</dd></div>
+          <div><dt>Anonymous table access</dt><dd>disabled</dd></div>
+        </dl>
+      </section>
+      <section className="platform-auth-card" aria-label="Authentication">
+        <AuthView path={authPath} />
+      </section>
+      <div className="platform-auth-visual" aria-hidden="true">
+        <PlatformAdminVisual screen="authorization" alt="" />
+      </div>
+    </main>
+  )
+}
+
+function RuntimeFailure({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <main className="platform-fail-closed">
+      <div className="platform-fail-card">
+        <Badge variant="prohibited">FAIL CLOSED</Badge>
+        <h1>Platform runtime is unavailable.</h1>
+        <p>{message}</p>
+        <Button variant="danger" onClick={onRetry}>Reload configuration</Button>
+      </div>
+      <PlatformAdminVisual screen="system-states" alt="Platform fail-closed visual contract" />
+    </main>
+  )
+}
+
+function AuthenticatedPlatform({
+  config,
+  authClient,
+}: {
+  config: PlatformRuntimeConfig
+  authClient: PlatformAuthClient
+}) {
+  const [session, setSession] = useState<SessionState | null | undefined>(undefined)
+  const [data, setData] = useState<BootstrapData | null>(null)
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const refreshSession = useCallback(async () => {
+    const result = await authClient.getSession()
+    const envelope = result.data as unknown as PlatformSession | null
+    if (envelope?.session?.access_token && envelope.user) {
+      setSession({ user: envelope.user, accessToken: envelope.session.access_token })
+      return
+    }
+    setSession(null)
+    setData(null)
+  }, [authClient])
+
+  useEffect(() => {
+    void refreshSession()
+  }, [refreshSession])
+
+  const refresh = useCallback(async () => {
+    if (!session) return
+    try {
+      setBootstrapError(null)
+      const next = await platformRpc<BootstrapData>(config, session.accessToken, "bootstrap")
+      setData(next)
+    } catch (error) {
+      setBootstrapError(error instanceof Error ? error.message : "Platform bootstrap failed.")
+    }
+  }, [config, session])
+
+  useEffect(() => {
+    if (session) void refresh()
+  }, [refresh, session])
+
+  const dataPlaneState: PlatformRuntimeState = bootstrapError ? "degraded" : data ? "connected" : "unconfigured"
+  const { services, refresh: refreshServices } = useServiceHealth(config, dataPlaneState)
+  const backendState = dataPlaneState === "connected" ? "online" : dataPlaneState === "offline" ? "offline" : "degraded"
+
+  const mutate = useCallback(async (
+    key: string,
+    functionName: string,
+    args: Record<string, unknown>,
+    success: string,
+  ) => {
+    if (!session) return
+    setBusy(key)
+    try {
+      await platformRpc(config, session.accessToken, functionName, args)
+      setNotice(success)
+      await refresh()
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Operation failed.")
+    } finally {
+      setBusy(null)
+    }
+  }, [config, refresh, session])
+
+  const signOut = useCallback(async () => {
+    await authClient.signOut()
+    setSession(null)
+    setData(null)
+    window.history.replaceState({}, "", "/")
+  }, [authClient])
+
+  const actions = useMemo<ApplicationActions>(() => ({
+    onSignOut: signOut,
+    onMarkAllNotificationsRead: () => setNotice("Notification state is derived from current server posture."),
+    onRetry: async () => {
+      await refresh()
+      await refreshServices()
+    },
+    onClearFilters: refresh,
+    onRequestAccess: ({ permission }) => setNotice("Access request noted locally for " + permission + ". Role changes require an administrator."),
+  }), [refresh, refreshServices, signOut])
+
+  if (session === undefined) {
+    return (
+      <div className="platform-boot">
+        <StatePanel state="loading" />
+      </div>
+    )
   }
 
-  const actions: ApplicationActions = useMemo(() => ({
-    onMarkAllNotificationsRead: () => {
-      setNotifications((current) => current.map((item) => ({ ...item, state: "read" as const })))
-      const now = new Date()
-      setAudit((current) => [{
-        id: "AUD-" + String(now.getTime()),
-        timestamp: now.toISOString().slice(11, 16),
-        actor: "platform-admin",
-        action: "notifications.marked.read",
-        resource: "platform",
-        result: "ok",
-        traceId: "TRACE-" + String(now.getTime()),
-      }, ...current].slice(0, 100))
-    },
-    onSignOut: () => record("session.signout.requested", "local-fixture", "not-connected"),
-    onRequestAccess: ({ permission }) => record("authorization.access.requested", permission, "queued"),
-    onRepositorySyncAll: () => record("service.dependencies.checked", "platform-build", "ready"),
-    onRepositoryInspect: (repo) => record("service.dependency.inspected", repo, "ready"),
-  }), [setNotifications, setAudit])
+  if (!session) return <AuthGate config={config} />
 
-  const path = window.location.pathname === "/" ? "/" : window.location.pathname.replace(/\/+$/, "")
+  if (bootstrapError && !data) {
+    return (
+      <main className="platform-fail-closed">
+        <div className="platform-fail-card">
+          <Badge variant="prohibited">DATA PLANE DEGRADED</Badge>
+          <h1>Authenticated, but Platform data could not be loaded.</h1>
+          <p>{bootstrapError}</p>
+          <div className="platform-action-row">
+            <Button variant="danger" onClick={() => void refresh()}>Retry data plane</Button>
+            <Button variant="secondary" onClick={() => void signOut()}>Sign out</Button>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="platform-boot">
+        <StatePanel state="loading" />
+      </div>
+    )
+  }
+
+  const actor = data.actor
+  const notifications: AppNotification[] = [
+    ...(actor.roles.length === 0 ? [{
+      id: "access-pending",
+      title: "Platform role required",
+      body: "Authentication succeeded, but this account has no Platform operational role.",
+      state: "unread",
+      variant: "review",
+    } as const] : []),
+    ...(data.moderation.length ? [{
+      id: "moderation-live",
+      title: "Moderation queue available",
+      body: data.moderation.length + " server-backed moderation item(s) are loaded.",
+      state: "unread",
+      variant: "case-update",
+    } as const] : []),
+    {
+      id: "authority-boundary",
+      title: "Server authority active",
+      body: "Mutations are JWT-authenticated, role-gated, and audited in Postgres.",
+      state: "read",
+      variant: "system",
+    } as const,
+  ]
+
+  const path = normalizePath(window.location.pathname)
+  const route = platformAdminContract.navigation.find((item) => item.path === path)
+  const screenId = route?.id as PlatformAdminScreenId | undefined
+
+  const onRole = (id: string, role: PlatformAdminRoleId | "none") =>
+    mutate(id, "set_user_role", { target_user_id: id, next_role: role }, "Platform role updated.")
+
+  const onState = (id: string, state: PlatformUserState) =>
+    mutate(id, "set_user_state", { target_user_id: id, next_state: state }, "User state updated.")
+
+  const onModerate = (id: string, state: ModerationState) =>
+    mutate(id, "moderate", { target_item_id: id, next_state: state }, "Moderation state updated.")
+
+  const onSetting = (key: string, value: unknown) =>
+    mutate(key, "update_setting", { setting_key: key, setting_value: value }, "Platform setting updated.")
+
   let screen: ReactNode
-
-  switch (path) {
-    case "/":
-    case "/dashboard":
-      screen = <DashboardScreen notifications={notifications} users={users} assetCommit={assetCommit} uiCommit={uiCommit} />
+  switch (screenId) {
+    case "dashboard":
+      screen = <DashboardScreen actor={actor} data={data} services={services} backendState={backendState} notifications={notifications} />
       break
-    case "/users":
-      screen = <UsersScreen notifications={notifications} users={users} setUsers={setUsers} record={record} />
+    case "users":
+      screen = <UsersScreen actor={actor} data={data} backendState={backendState} notifications={notifications} busy={busy} onRole={onRole} onState={onState} />
       break
-    case "/authorization":
-      screen = <AuthorizationScreen notifications={notifications} record={record} />
+    case "authorization":
+      screen = <AuthorizationScreen actor={actor} backendState={backendState} notifications={notifications} />
       break
-    case "/moderation":
-    case "/cases":
-      screen = <ModerationScreen notifications={notifications} record={record} />
+    case "moderation":
+      screen = <ModerationScreen actor={actor} data={data} backendState={backendState} notifications={notifications} busy={busy} onModerate={onModerate} />
       break
-    case "/service-status":
-      screen = <ServiceStatusScreen notifications={notifications} record={record} assetCommit={assetCommit} uiCommit={uiCommit} />
+    case "service-status":
+      screen = <ServiceStatusScreen actor={actor} backendState={backendState} notifications={notifications} services={services} onRefresh={refreshServices} />
       break
-    case "/audit":
-      screen = <AuditScreen notifications={notifications} audit={audit} />
+    case "audit":
+      screen = <AuditScreen actor={actor} data={data} backendState={backendState} notifications={notifications} />
       break
-    case "/settings":
-    case "/profile":
-      screen = <SettingsScreen notifications={notifications} settings={settings} setSettings={setSettings} record={record} />
+    case "settings":
+      screen = <SettingsScreen actor={actor} data={data} backendState={backendState} notifications={notifications} busy={busy} onSetting={onSetting} />
       break
-    case "/system-states":
-      screen = <SystemStatesScreen notifications={notifications} />
+    case "system-states":
+      screen = <SystemStatesScreen actor={actor} backendState={backendState} notifications={notifications} onRetry={refresh} />
       break
     default:
-      screen = <NotFoundScreen notifications={notifications} path={path} />
-      break
+      screen = <NotFoundScreen actor={actor} backendState={backendState} notifications={notifications} />
   }
 
-  return <ApplicationActionsProvider actions={actions}>{screen}</ApplicationActionsProvider>
+  return (
+    <ApplicationActionsProvider actions={actions}>
+      {screen}
+      {notice ? (
+        <aside className="platform-feedback" role="status" aria-live="polite">
+          <Badge variant="info">Platform</Badge>
+          <p>{notice}</p>
+          <Button size="sm" variant="ghost" onClick={() => setNotice(null)}>Dismiss</Button>
+        </aside>
+      ) : null}
+    </ApplicationActionsProvider>
+  )
+}
+
+export function PlatformApp() {
+  const [reloadKey, setReloadKey] = useState(0)
+  const [config, setConfig] = useState<PlatformRuntimeConfig | null>(null)
+  const [configError, setConfigError] = useState<string | null>(null)
+  const [authClient, setAuthClient] = useState<PlatformAuthClient | null>(null)
+
+  useEffect(() => {
+    let active = true
+    setConfig(null)
+    setConfigError(null)
+    void loadRuntimeConfig()
+      .then((next) => {
+        if (!active) return
+        setConfig(next)
+        setAuthClient(() => createPlatformAuthClient(next))
+      })
+      .catch((error) => {
+        if (!active) return
+        setConfigError(error instanceof Error ? error.message : "Runtime configuration failed.")
+      })
+    return () => { active = false }
+  }, [reloadKey])
+
+  if (configError) {
+    return <RuntimeFailure message={configError} onRetry={() => setReloadKey((value) => value + 1)} />
+  }
+
+  if (!config || !authClient) {
+    return (
+      <div className="platform-boot">
+        <StatePanel state="loading" />
+      </div>
+    )
+  }
+
+  const navigate = (href: string) => {
+    window.history.pushState({}, "", href)
+    window.dispatchEvent(new PopStateEvent("popstate"))
+  }
+
+  const replace = (href: string) => {
+    window.history.replaceState({}, "", href)
+    window.dispatchEvent(new PopStateEvent("popstate"))
+  }
+
+  return (
+    <NeonAuthUIProvider
+      authClient={authClient}
+      redirectTo="/"
+      emailOTP
+      navigate={navigate}
+      replace={replace}
+    >
+      <AuthenticatedPlatform config={config} authClient={authClient} />
+    </NeonAuthUIProvider>
+  )
 }
