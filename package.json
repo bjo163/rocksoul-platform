@@ -13,7 +13,7 @@
     "ci": "npm test && npm run typecheck && npm run build"
   },
   "dependencies": {
-    "@rocksoul/ui": "github:bjo163/rocksoul-ui#e25978b8745046510fc071e9cc05a5d74a1ff650",
+    "@rocksoul/ui": "github:bjo163/rocksoul-ui#6a98ce0d5f5be60d4744f073837cd754639ea044",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
