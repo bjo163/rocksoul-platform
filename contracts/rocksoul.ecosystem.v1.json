@@ -1,0 +1,27 @@
+{
+  "version": "rocksoul.ecosystem.v1",
+  "canonical_branch": "main",
+  "domains": {
+    "STORY": { "repository": "rocksoul-mftl", "prefix": "mftl:" },
+    "EVENT": { "repository": "rocksoul-legend", "prefix": "legend:" },
+    "PERSON": { "repository": "rocksoul-superhero", "prefix": "superhero:" },
+    "TEXT": { "repository": "rocksoul-rgbl", "prefix": "rgbl:" },
+    "LAW": { "repository": "rocksoul-aws", "prefix": "aws:" },
+    "PERSPECTIVE": { "repository": "rocksoul-jizz", "prefix": "jizz:" },
+    "RELATIONSHIP": { "repository": "rocksoul-correlation", "prefix": "correlation:" }
+  },
+  "product_layers": {
+    "DESIGN": "rocksoul-assets",
+    "UI": "rocksoul-ui",
+    "PUBLIC": "rocksoul-web",
+    "COMMUNITY": "rocksoul-community",
+    "ADMIN_IAM": "rocksoul-platform",
+    "OPERATIONS": "rocksoul-crayon"
+  },
+  "principles": {
+    "semantic_responsibility": "one canonical owner",
+    "references": "many references, no silent duplication",
+    "foreign_reference_branch": "main",
+    "repository_identity_is_domain_identity": false
+  }
+}
