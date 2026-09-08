@@ -11,6 +11,7 @@ import {
   ChatScreen,
   DashboardScreen,
   KanbanScreen,
+  MOONWITNESS_STABLE_REPOSITORY_BASE,
   MoonWitnessAssetProvider,
   PlatformScreen,
   ProfileSettingsScreen,
@@ -20,8 +21,7 @@ import {
 import "@rocksoul/ui/styles.css"
 import "./platform.css"
 
-const ROCKSOUL_ASSET_BASE =
-  "https://raw.githubusercontent.com/bjo163/rocksoul-assets/main/moonwitness"
+const ROCKSOUL_ASSET_BASE = `${MOONWITNESS_STABLE_REPOSITORY_BASE}/moonwitness`
 
 function normalizePath(pathname: string) {
   if (pathname === "/") return pathname
