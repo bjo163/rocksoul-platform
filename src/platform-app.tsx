@@ -720,8 +720,8 @@ export function PlatformApp({
         id: "N-" + String(now.getTime()),
         title: action.replaceAll(".", " "),
         body: resource + " / " + result,
-        state: "unread",
-        variant: "system",
+        state: "unread" as const,
+        variant: "system" as const,
       },
       ...current,
     ].slice(0, 20))
