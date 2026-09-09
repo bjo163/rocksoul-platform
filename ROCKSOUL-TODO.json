@@ -1,5 +1,14 @@
 {
   "schema": "rocksoul.todo.v1",
   "repository_id": "rocksoul-platform",
-  "tasks": []
+  "tasks": [
+    {
+      "id": "PLATFORM-001",
+      "title": "Maintain repository control contract and local TODO",
+      "status": "NOT_STARTED",
+      "scope": "repository",
+      "github_issue": "https://github.com/bjo163/rocksoul-platform/issues/5",
+      "evidence": []
+    }
+  ]
 }
